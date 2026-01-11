@@ -21,10 +21,17 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (isAuthenticated && token) {
       const socketUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const newSocket = io(socketUrl, {
+      const isProd = !!import.meta.env.PROD;
+
+      // Render often has flaky websocket upgrades. For reliability, use polling in production.
+      // (We still get real-time-ish updates via polling + our backend polling fallback on the upload page.)
+      const socketOptions = {
         auth: { token },
-        transports: ['websocket', 'polling']
-      });
+        transports: isProd ? ['polling'] : ['polling', 'websocket'],
+        upgrade: !isProd
+      };
+
+      const newSocket = io(socketUrl, socketOptions);
 
       newSocket.on('connect', () => {
         console.log('Socket connected');
