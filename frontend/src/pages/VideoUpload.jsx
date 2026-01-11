@@ -47,6 +47,37 @@ const VideoUpload = () => {
   useEffect(() => {
     if (videoId) {
       subscribeToVideo(videoId);
+
+      // Fallback: polling (Render websockets can disconnect; <10s videos can finish before subscribe/connect)
+      // This ensures the UI still advances to completed/flagged/failed even if socket events are missed.
+      let pollInterval = null;
+      const startPolling = () => {
+        if (pollInterval) return;
+        pollInterval = setInterval(async () => {
+          try {
+            const res = await api.get(`/api/videos/${videoId}`);
+            const v = res?.data?.data?.video;
+            if (!v) return;
+
+            // Keep UI roughly in sync
+            if (typeof v.processingProgress === 'number') setProcessingProgress(v.processingProgress);
+            if (v.status) setStatus(String(v.status).toLowerCase());
+
+            // When processing is done, stop polling and redirect
+            if (['completed', 'flagged', 'failed'].includes(String(v.status).toLowerCase())) {
+              clearInterval(pollInterval);
+              pollInterval = null;
+              if (['completed', 'flagged'].includes(String(v.status).toLowerCase())) {
+                navigate(`/video/${videoId}`);
+              }
+            }
+          } catch (e) {
+            // ignore poll failures
+          }
+        }, 2000);
+      };
+
+      startPolling();
       
       const unsubscribeProgress = onVideoProgress((data) => {
         if (data.videoId === videoId) {
@@ -135,12 +166,21 @@ const VideoUpload = () => {
               navigate(`/video/${videoId}`);
             }, 2000);
           }
+          // Stop polling once we have a definitive completion
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
         }
       });
 
       return () => {
         unsubscribeProgress?.();
         unsubscribeComplete?.();
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
       };
     }
   }, [videoId, subscribeToVideo, onVideoProgress, onVideoComplete, navigate]);

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 
@@ -16,6 +16,7 @@ export const SocketProvider = ({ children }) => {
   const { token, isAuthenticated } = useAuth();
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
+  const pendingVideoSubscriptionsRef = useRef(new Set());
 
   useEffect(() => {
     if (isAuthenticated && token) {
@@ -28,6 +29,17 @@ export const SocketProvider = ({ children }) => {
       newSocket.on('connect', () => {
         console.log('Socket connected');
         setConnected(true);
+
+        // IMPORTANT: if subscribeToVideo was called before the socket connected (very common on Render,
+        // and especially for <10s videos), we would miss progress/complete events.
+        // Re-subscribe to all pending video rooms on every (re)connect.
+        try {
+          pendingVideoSubscriptionsRef.current.forEach((videoId) => {
+            newSocket.emit('subscribe:video', videoId);
+          });
+        } catch (e) {
+          // ignore
+        }
       });
 
       newSocket.on('disconnect', () => {
@@ -58,6 +70,11 @@ export const SocketProvider = ({ children }) => {
   }, [isAuthenticated, token]);
 
   const subscribeToVideo = (videoId) => {
+    if (!videoId) return;
+
+    // Always record intent to subscribe, even if socket isn't connected yet.
+    pendingVideoSubscriptionsRef.current.add(videoId);
+
     if (socket && connected) {
       socket.emit('subscribe:video', videoId);
     }
