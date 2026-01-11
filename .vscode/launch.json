@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Backend Server",
+      "skipFiles": ["<node_internals>/**"],
+      "program": "${workspaceFolder}/backend/server.js",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "envFile": "${workspaceFolder}/backend/.env",
+      "console": "integratedTerminal",
+      "restart": false,
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--inspect"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Backend (with Nodemon)",
+      "skipFiles": ["<node_internals>/**"],
+      "runtimeExecutable": "nodemon",
+      "runtimeArgs": ["--inspect", "server.js"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "envFile": "${workspaceFolder}/backend/.env",
+      "console": "integratedTerminal",
+      "restart": true
+    }
+  ]
+}
