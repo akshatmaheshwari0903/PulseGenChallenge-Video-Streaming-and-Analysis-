@@ -198,6 +198,7 @@ export const processVideoForStreaming = async (inputPath, outputPath, progressCa
   
   return new Promise((resolve, reject) => {
     const hasAudio = options.hasAudio !== false; // default true
+    const durationSeconds = typeof options.duration === 'number' ? options.duration : null;
 
     const outputOptions = [
       '-c:v libx264',
@@ -225,8 +226,25 @@ export const processVideoForStreaming = async (inputPath, outputPath, progressCa
       })
       .on('progress', (progress) => {
         if (progressCallback) {
-          const percent = progress.percent || 0;
-          progressCallback(Math.min(percent, 100));
+          // fluent-ffmpeg's `progress.percent` can be undefined (common for short clips),
+          // which makes the UI look "stuck". Compute from timemark + duration as fallback.
+          let percent = typeof progress.percent === 'number' ? progress.percent : null;
+
+          if ((percent === null || Number.isNaN(percent)) && durationSeconds && progress.timemark) {
+            const parts = String(progress.timemark).split(':'); // HH:MM:SS.xx
+            if (parts.length === 3) {
+              const h = parseFloat(parts[0]) || 0;
+              const m = parseFloat(parts[1]) || 0;
+              const s = parseFloat(parts[2]) || 0;
+              const t = (h * 3600) + (m * 60) + s;
+              if (durationSeconds > 0) {
+                percent = (t / durationSeconds) * 100;
+              }
+            }
+          }
+
+          if (percent === null || Number.isNaN(percent)) percent = 0;
+          progressCallback(Math.min(Math.max(percent, 0), 100));
         }
       })
       .on('end', () => {
@@ -237,7 +255,28 @@ export const processVideoForStreaming = async (inputPath, outputPath, progressCa
         console.error('FFmpeg error:', err);
         reject(err);
       })
-      .run();
+      ;
+
+    // Safety timeout so short clips can't "hang" forever on Render.
+    const timeoutMs =
+      typeof options.timeoutMs === 'number'
+        ? options.timeoutMs
+        : (durationSeconds ? Math.max(60_000, Math.min(10 * 60_000, durationSeconds * 20_000)) : 5 * 60_000);
+
+    const timeout = setTimeout(() => {
+      try {
+        console.error(`FFmpeg timeout after ${timeoutMs}ms for ${outputPath}`);
+        command.kill('SIGKILL');
+      } catch (e) {
+        // ignore
+      }
+      reject(new Error('Video compression timeout'));
+    }, timeoutMs);
+
+    command.on('end', () => clearTimeout(timeout));
+    command.on('error', () => clearTimeout(timeout));
+
+    command.run();
   });
 };
 
