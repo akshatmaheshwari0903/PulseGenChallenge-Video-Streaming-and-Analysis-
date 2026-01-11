@@ -189,24 +189,36 @@ export const getVideoMetadata = (videoPath) => {
  * @param {string} inputPath - Input video path
  * @param {string} outputPath - Output video path
  * @param {Function} progressCallback - Progress callback function
+ * @param {object} options - Processing options
+ * @param {boolean} options.hasAudio - Whether input has an audio stream (if false, do not force audio)
  * @returns {Promise<string>} Path to processed video
  */
-export const processVideoForStreaming = async (inputPath, outputPath, progressCallback = null) => {
+export const processVideoForStreaming = async (inputPath, outputPath, progressCallback = null, options = {}) => {
   await initializeFFmpeg();
   
   return new Promise((resolve, reject) => {
+    const hasAudio = options.hasAudio !== false; // default true
+
+    const outputOptions = [
+      '-c:v libx264',
+      '-preset medium',
+      '-crf 23',
+      '-maxrate 2M',
+      '-bufsize 4M',
+      '-movflags +faststart', // Enable fast start for streaming
+      '-f mp4'
+    ];
+
+    // IMPORTANT: Many short clips have no audio stream.
+    // Forcing AAC on a video with no audio can fail and make uploads “stop after analysis”.
+    if (hasAudio) {
+      outputOptions.push('-c:a aac', '-b:a 128k');
+    } else {
+      outputOptions.push('-an');
+    }
+
     const command = ffmpeg(inputPath)
-      .outputOptions([
-        '-c:v libx264',
-        '-preset medium',
-        '-crf 23',
-        '-maxrate 2M',
-        '-bufsize 4M',
-        '-c:a aac',
-        '-b:a 128k',
-        '-movflags +faststart', // Enable fast start for streaming
-        '-f mp4'
-      ])
+      .outputOptions(outputOptions)
       .output(outputPath)
       .on('start', (commandLine) => {
         console.log('FFmpeg process started:', commandLine);

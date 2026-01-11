@@ -192,7 +192,7 @@ async function processVideoAsync(videoId, inputPath, metadata) {
       if (progress % 20 === 0) {
         console.log(`   [${totalProgress.toFixed(0)}%] Compressing...`);
       }
-    });
+    }, { hasAudio: metadata?.hasAudio !== false });
 
     console.log(`   [90%] Compression complete`);
     emitVideoProgress(videoId, 95, 'finalizing');
